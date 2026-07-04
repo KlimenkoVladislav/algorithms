@@ -21,10 +21,50 @@ struct Leaf{
         : first_index_in_leaf(first), last_index_in_leaf(last) {}
 };
 
+struct SparseVector{
+    std::vector<int> indices_non_zero_koordinats;
+    std::vector<int> non_zero_koordinats;
+    int dimension;
+
+    int getAxisValue(int axis) const {
+        auto it = std::lower_bound(indices_non_zero_koordinats.begin(),
+                                   indices_non_zero_koordinats.end(),
+                                   axis);
+        if ((it != indices_non_zero_koordinats.end()) and (*it == axis)){
+            int position = it - indices_non_zero_koordinats.begin();
+            return non_zero_koordinats[position];
+        }
+        return 0;
+    }
+
+    bool checkValue(int axis) const {
+        auto it = std::lower_bound(indices_non_zero_koordinats.begin(),
+                                   indices_non_zero_koordinats.end(),
+                                   axis);
+        return (it != indices_non_zero_koordinats.end()) and (*it == axis);
+    }
+
+    float distanse(const SparseVector &other_vector) const {
+        int distanse_value = 0;
+        for (int axis = 0; axis < dimension; axis++){
+            int this_vector_value = getAxisValue(axis);
+            if (this_vector_value){
+                int other_vector_value = other_vector.getAxisValue(axis);
+                if (other_vector_value){
+                    distanse_value += (this_vector_value - other_vector_value) 
+                                    * (this_vector_value - other_vector_value);
+                }
+            }
+        }
+
+        return distanse_value;
+    }
+};
+
 class kdTree{
 private:
     std::variant<std::monostate, Node*, Leaf*> _root;
-    std::vector<std::vector<int>> _db;
+    std::vector<SparseVector*> _db;
     std::vector<int> _data_indices;
     int _leaf_max_size;
 
@@ -36,16 +76,9 @@ private:
             return std::nullopt;
         }
         
-        int median_index = (left_bound_for_indexes + 
-                               right_bound_for_indexes) / 2;
-        auto nth = _data_indices.begin() + median_index;
-        std::nth_element(_data_indices.begin() + left_bound_for_indexes, 
-                         nth, 
-                         _data_indices.begin() + right_bound_for_indexes+1,
-                     [&](int I, int J)
-                        { _db[I][axis] < _db[J][axis]; });
+        int median = (left_bound_for_indexes + right_bound_for_indexes) / 2;
+        auto nth_index = _data_indices.begin() + median;
         
-        return _db[_data_indices[median_index]][axis];
     }
 
     std::variant<std::monostate, Node*, Leaf*> kdTreeCreate(
@@ -67,7 +100,7 @@ private:
 
             int median = (left_bound_for_indexes + 
                           right_bound_for_indexes) / 2;
-            int next_axis = (axis + 1) % _db[0].size();
+            int next_axis = (axis + 1) % _db[0]->dimension;
 
             new_node->left = kdTreeCreate(left_bound_for_indexes, median,
                                           next_axis);
@@ -94,7 +127,7 @@ private:
     }
 
 public:
-    kdTree(std::vector<std::vector<int>> db, 
+    kdTree(std::vector<SparseVector*> db, 
            int leaf_max_size,
            std::vector<int> data_indices) 
          : _db(std::move(db)), 
@@ -104,9 +137,10 @@ public:
            }
 
     static kdTree createTree(int leaf_max_size, 
-                             std::vector<std::vector<int>> &db){
+                             std::vector<SparseVector*> &db){
         std::vector<int> data_indices(db.size());
-        for (int i = 0; i < db.size(); i++){
+        int db_size = db.size();
+        for (int i = 0; i < db_size; i++){
             data_indices[i] = i;
         }
 
@@ -114,7 +148,7 @@ public:
     }
 
     std::vector<int> topKRetrieval(std::vector<int> &query, int k){
-        
+
     }
 
     ~kdTree(){
@@ -122,7 +156,7 @@ public:
     }
 };
 
-void readDatabase(std::vector<std::vector<int>> &db){
+void readDatabase(std::vector<SparseVector*> &db){
     std::ifstream file("database.db");
     if (!file.is_open()){
         std::cout << "Не удалось открыть файл\n";
@@ -133,25 +167,36 @@ void readDatabase(std::vector<std::vector<int>> &db){
     while (std::getline(file, line)){
         int line_length = line.length();
         std::string num;
-        std::vector<int> one_vector;
+        int index = 0;
+        SparseVector *sparse_vector = new SparseVector();
         for (int i = 0; i < line_length; i++){
             if ((line[i] == ' ') and (!num.empty())){
-                one_vector.push_back(std::stoi(num));
+                sparse_vector->non_zero_koordinats.push_back(std::stoi(num));
+                sparse_vector->indices_non_zero_koordinats.push_back(index);
                 num.clear();
+                index++;
             }
             else if ((line[i] == '0') and (num.empty())){
-                one_vector.push_back(0);
+                index++;
             }
             else { num.push_back(line[i]); }
         }
-        db.push_back(one_vector);
+        if (!num.empty()){
+            sparse_vector->non_zero_koordinats.push_back(std::stoi(num));
+            sparse_vector->indices_non_zero_koordinats.push_back(index);
+            num.clear();
+            index++;
+        }
+        sparse_vector->dimension = index + 1;
+        db.push_back(sparse_vector);
+        index = 0;
     }
     
     file.close();
 }
 
 int main(){
-    std::vector<std::vector<int>> db;
+    std::vector<SparseVector*> db;
     readDatabase(db);
     if (db.empty()){ return -1; }
 
