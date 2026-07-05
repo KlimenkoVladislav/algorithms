@@ -44,58 +44,46 @@ struct SparseVector{
         return (it != nnz_coords_indices.end()) and (*it == axis);
     }
 
-    float distanse(const SparseVector &other) const {
-        float distanse_value = 0.0;
+    float distance(const SparseVector &other) const {
+        float distance_value = 0.0;
         int this_nnz_coords = nnz_coords.size();
         int oth_nnz_coords = other.nnz_coords.size();
-        int this_nnz_idx = 0;
-        int oth_nnz_idx = 0;
-        while ((this_nnz_idx < this_nnz_coords) 
-           and (oth_nnz_idx < oth_nnz_coords)){
-            if (nnz_coords_indices[this_nnz_idx] ==
-                other.nnz_coords_indices[oth_nnz_idx]){
-                    
-                distanse_value += 
-                (nnz_coords[nnz_coords_indices[this_nnz_idx]]
-                - other.nnz_coords[other.nnz_coords_indices[oth_nnz_idx]]) 
-                * (nnz_coords[nnz_coords_indices[this_nnz_idx]]
-                - other.nnz_coords[other.nnz_coords_indices[oth_nnz_idx]]);
-                
-                this_nnz_idx++;
-                oth_nnz_idx++;
+        int i = 0;
+        int j = 0;
+        while ((i < this_nnz_coords) 
+           and (j < oth_nnz_coords)){
+            if (nnz_coords_indices[i] == other.nnz_coords_indices[j]){
+                distance_value += (nnz_coords[nnz_coords_indices[i]] -
+                other.nnz_coords[other.nnz_coords_indices[j]]) *
+                (nnz_coords[nnz_coords_indices[i]] -
+                other.nnz_coords[other.nnz_coords_indices[j]]);
+                i++; j++;
             }
-            else if (nnz_coords_indices[this_nnz_idx] <
-                other.nnz_coords_indices[oth_nnz_idx]){
-                
-                distanse_value += 
-                nnz_coords[nnz_coords_indices[this_nnz_idx]]
-                * nnz_coords[nnz_coords_indices[this_nnz_idx]];
-                this_nnz_idx++;
+            else if (nnz_coords_indices[i] < other.nnz_coords_indices[j]){
+                distance_value += nnz_coords[nnz_coords_indices[i]] *
+                nnz_coords[nnz_coords_indices[i]];
+                i++;
             }
             else {
-                distanse_value +=
-                other.nnz_coords[other.nnz_coords_indices[oth_nnz_idx]]
-                * other.nnz_coords[other.nnz_coords_indices[oth_nnz_idx]];
-                oth_nnz_idx++;
+                distance_value +=
+                other.nnz_coords[other.nnz_coords_indices[j]] *
+                other.nnz_coords[other.nnz_coords_indices[j]];
+                j++;
             }
         }
 
-        while (this_nnz_idx < this_nnz_coords){
-            distanse_value += 
-            nnz_coords[nnz_coords_indices[this_nnz_idx]]
-            * nnz_coords[nnz_coords_indices[this_nnz_idx]];
-
-            this_nnz_idx++;
+        while (i < this_nnz_coords){
+            distance_value += nnz_coords[nnz_coords_indices[i]] *
+            nnz_coords[nnz_coords_indices[i]];
+            i++;
         }
-        while (oth_nnz_idx < oth_nnz_coords){
-            distanse_value +=
-            other.nnz_coords[other.nnz_coords_indices[oth_nnz_idx]]
-            * other.nnz_coords[other.nnz_coords_indices[oth_nnz_idx]];
-
-            oth_nnz_idx++;
+        while (j < oth_nnz_coords){
+            distance_value += other.nnz_coords[other.nnz_coords_indices[j]]
+            * other.nnz_coords[other.nnz_coords_indices[j]];
+            j++;
         }
 
-        return distanse_value;
+        return distance_value;
     }
 };
 
@@ -106,7 +94,7 @@ private:
     std::vector<int> _data_indices;
     int _leaf_max_size;
 
-    std::optional<int> finding_median(int left_bound_indices,
+    std::optional<int> findMedian(int left_bound_indices,
                                       int right_bound_indices,
                                       int &axis){
         
@@ -116,7 +104,7 @@ private:
         
         // сделано для оптимизации: подсчитывает, у скольких векторов есть
         // значение по этой оси
-        int bound_nnz_num = (right_bound_indices - 
+        int bound_zero_val = (right_bound_indices - 
                                         left_bound_indices) / 2 + 1;
         while (true){
             int non_zero_count = 0;
@@ -124,13 +112,13 @@ private:
                 int idx = _data_indices[i];
                 if (_db[idx]->checkValue(axis)){
                     non_zero_count++;
-                    if (non_zero_count > bound_nnz_num){
-                        bound_nnz_num = -1;
+                    if (non_zero_count > bound_zero_val){
+                        bound_zero_val = -1;
                         break;
                     }
                 }
             }
-            if (bound_nnz_num != -1){ break; }
+            if (bound_zero_val != -1){ break; }
             else { axis = (axis + 1) % _db[0]->dimension; }
         }
 
@@ -148,7 +136,7 @@ private:
         return _db[_data_indices[median]]->getAxisValue(axis);
     }
 
-    std::variant<std::monostate, Node*, Leaf*> KDTreeCreate(
+    std::variant<std::monostate, Node*, Leaf*> buildTree(
                                     int left_bound_indices,
                                     int right_bound_indices, 
                                     int axis){
@@ -156,21 +144,19 @@ private:
         if (left_bound_indices >= right_bound_indices){
             return std::monostate{};
         }
-        if (right_bound_indices - left_bound_indices + 1 
-                                                    > _leaf_max_size){
+        if (right_bound_indices - left_bound_indices + 1 > _leaf_max_size){
             Node *new_node = new Node();
-            new_node->bound = finding_median(left_bound_indices, 
+            new_node->bound = findMedian(left_bound_indices, 
                                              right_bound_indices, axis);
             if (!new_node->bound.has_value()){ return std::monostate{}; }
             new_node->axis = axis;
 
-            int median = (left_bound_indices + 
-                          right_bound_indices) / 2;
+            int median = (left_bound_indices + right_bound_indices) / 2;
             int next_axis = (axis + 1) % _db[0]->dimension;
 
-            new_node->left = KDTreeCreate(left_bound_indices, median,
+            new_node->left = buildTree(left_bound_indices, median,
                                           next_axis);
-            new_node->right = KDTreeCreate(median + 1, right_bound_indices,
+            new_node->right = buildTree(median + 1, right_bound_indices,
                                            next_axis);
             
             return new_node;
@@ -199,10 +185,10 @@ public:
          : _db(std::move(db)), 
            _data_indices(std::move(data_indices)), 
            _leaf_max_size(leaf_max_size){
-                _root = KDTreeCreate(0, _db.size()-1, 0);
+                _root = buildTree(0, _db.size()-1, 0);
            }
 
-    static KDTree createTree(int leaf_max_size, 
+    static KDTree create(int leaf_max_size, 
                              std::vector<SparseVector*> &db){
         std::vector<int> data_indices(db.size());
         int db_size = db.size();
@@ -213,7 +199,7 @@ public:
         return KDTree(std::move(db), leaf_max_size, std::move(data_indices));
     }
 
-    std::vector<int> topKRetrieval(std::vector<int> &query, int k){
+    std::vector<int> topKRetrieval(SparseVector* &query, int k){
 
     }
 
@@ -271,29 +257,39 @@ int main(){
     std::cin >> leaf_max_size;
     std::cin.ignore();
 
-    KDTree tree = KDTree::createTree(leaf_max_size, db);
+    KDTree tree = KDTree::create(leaf_max_size, db);
 
-    std::vector<int> query_vector;
+    SparseVector *query = new SparseVector();
     std::string query_string;
     std::cout << "Введите query вектор для поиска похожих" 
               << " (координаты должны быть введены через пробел):\n";
     std::getline(std::cin, query_string);
     std::string num;
+    int index = 0;
     for (int i = 0; i < query_string.size(); i++){
         if ((query_string[i] == ' ') and (!num.empty())){
-            query_vector.push_back(std::stoi(num));
+            query->nnz_coords.push_back(std::stoi(num));
+            query->nnz_coords_indices.push_back(index);
             num.clear();
+            index++;
         }
         else if ((query_string[i] == '0') and (num.empty())){
-            query_vector.push_back(0);
+            index++;
         }
         else { num.push_back(query_string[i]); }
     }
+    if (!num.empty()){
+        query->nnz_coords.push_back(std::stoi(num));
+        query->nnz_coords_indices.push_back(index);
+        num.clear();
+        index++;
+    }
     query_string.clear();
+    query->dimension = index + 1;
 
     int k;
     std::cout << "Введите k для top-k vector retrieval: ";
     std::cin >> k;
 
-    tree.topKRetrieval(query_vector, k);
+    tree.topKRetrieval(query, k);
 }
