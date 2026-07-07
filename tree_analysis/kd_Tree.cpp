@@ -5,13 +5,9 @@
 #include <algorithm>
 #include <variant>
 #include <optional>
-
-struct Node{
-    int axis;
-    std::optional<int> bound;
-    std::variant<std::monostate, Node*, Leaf*> left;
-    std::variant<std::monostate, Node*, Leaf*> right;
-};
+#include <queue>
+#include <cmath>
+#include <limits>
 
 struct Leaf{
     int first_leaf_index;
@@ -19,6 +15,13 @@ struct Leaf{
     
     Leaf(int first, int last)
         : first_leaf_index(first), last_leaf_index(last) {}
+};
+
+struct Node{
+    int axis;
+    std::optional<int> bound;
+    std::variant<std::monostate, Node*, Leaf*> left;
+    std::variant<std::monostate, Node*, Leaf*> right;
 };
 
 struct SparseVector{
@@ -44,8 +47,8 @@ struct SparseVector{
         return (it != nnz_coords_indices.end()) and (*it == axis);
     }
 
-    float distance(const SparseVector &other) const {
-        float distance_value = 0.0;
+    int distance(const SparseVector &other) const {
+        int distance_value = 0;
         int this_nnz_coords = nnz_coords.size();
         int oth_nnz_coords = other.nnz_coords.size();
         int i = 0;
@@ -53,33 +56,26 @@ struct SparseVector{
         while ((i < this_nnz_coords) 
            and (j < oth_nnz_coords)){
             if (nnz_coords_indices[i] == other.nnz_coords_indices[j]){
-                distance_value += (nnz_coords[nnz_coords_indices[i]] -
-                other.nnz_coords[other.nnz_coords_indices[j]]) *
-                (nnz_coords[nnz_coords_indices[i]] -
-                other.nnz_coords[other.nnz_coords_indices[j]]);
+                int diff = nnz_coords[i] - other.nnz_coords[j];
+                distance_value += diff * diff;
                 i++; j++;
             }
             else if (nnz_coords_indices[i] < other.nnz_coords_indices[j]){
-                distance_value += nnz_coords[nnz_coords_indices[i]] *
-                nnz_coords[nnz_coords_indices[i]];
+                distance_value += nnz_coords[i] * nnz_coords[i];
                 i++;
             }
             else {
-                distance_value +=
-                other.nnz_coords[other.nnz_coords_indices[j]] *
-                other.nnz_coords[other.nnz_coords_indices[j]];
+                distance_value += other.nnz_coords[j] * other.nnz_coords[j];
                 j++;
             }
         }
 
         while (i < this_nnz_coords){
-            distance_value += nnz_coords[nnz_coords_indices[i]] *
-            nnz_coords[nnz_coords_indices[i]];
+            distance_value += nnz_coords[i] * nnz_coords[i];
             i++;
         }
         while (j < oth_nnz_coords){
-            distance_value += other.nnz_coords[other.nnz_coords_indices[j]]
-            * other.nnz_coords[other.nnz_coords_indices[j]];
+            distance_value += other.nnz_coords[j] * other.nnz_coords[j];
             j++;
         }
 
@@ -94,9 +90,18 @@ private:
     std::vector<int> _data_indices;
     int _leaf_max_size;
 
-    std::optional<int> findMedian(int left_bound_indices,
-                                      int right_bound_indices,
-                                      int &axis){
+    struct Candidate{
+        float distance;
+        int index;
+
+        bool operator<(const Candidate &other) const {
+            return distance < other.distance;
+        }
+    };
+
+    std::optional<int> findMedian(const int left_bound_indices,
+                                  const int right_bound_indices,
+                                  int &axis){
         
         if (left_bound_indices == right_bound_indices){
             return std::nullopt;
@@ -137,8 +142,8 @@ private:
     }
 
     std::variant<std::monostate, Node*, Leaf*> buildTree(
-                                    int left_bound_indices,
-                                    int right_bound_indices, 
+                                    const int left_bound_indices,
+                                    const int right_bound_indices, 
                                     int axis){
         
         if (left_bound_indices >= right_bound_indices){
@@ -163,6 +168,57 @@ private:
         }
         else {
             return new Leaf(left_bound_indices, right_bound_indices);
+        }
+    }
+
+    void searchRecursive(
+        const std::variant<std::monostate, Node*, Leaf*> &node,
+        const SparseVector &query,
+        int k,
+        std::priority_queue<Candidate> &heap,
+        float &best_dist){
+
+        if (std::holds_alternative<std::monostate>(node)){ return; }
+        if (std::holds_alternative<Leaf*>(node)){
+            Leaf *leaf = std::get<Leaf*>(node);
+            for (int i = leaf->first_leaf_index; i <= leaf->last_leaf_index; i++){
+                int idx = _data_indices[i];
+                float dist = query.distance(*_db[idx]);
+
+                if (heap.size() < k){
+                    heap.push({dist, idx});
+                    best_dist = heap.top().distance;
+                }
+                else if (dist < heap.top().distance){
+                    heap.pop();
+                    heap.push({dist, idx});
+                    best_dist = heap.top().distance;
+                }
+            }
+            return;
+        }
+
+        Node *n = std::get<Node*>(node);
+        int query_val = query.getAxisValue(n->axis);
+        int bound = n->bound.value();
+
+        bool go_left = (query_val <= bound);
+        if (go_left){
+            searchRecursive(n->left, query, k, heap, best_dist);
+        }
+        else {
+            searchRecursive(n->right, query, k, heap, best_dist);
+        }
+
+        // backtracking
+        float dist_to_plane = std::abs(query_val - bound);
+        if ((dist_to_plane < best_dist) or (heap.size() < k)){
+            if (go_left){
+                searchRecursive(n->right, query, k, heap, best_dist);
+            }
+            else {
+                searchRecursive(n->left, query, k, heap, best_dist);
+            }
         }
     }
 
@@ -199,12 +255,58 @@ public:
         return KDTree(std::move(db), leaf_max_size, std::move(data_indices));
     }
 
-    std::vector<int> topKRetrieval(SparseVector* &query, int k){
+    void topKRetrieval(SparseVector &query, int k){
+        // по хорошему, надо, чтобы функция что-то возвращала, но так как это
+        // не боевой проект, а чисто для анализа, то и так сойдёт)
+        if ((k <= 0) or _db.empty()){ return; }
 
+        std::priority_queue<Candidate> heap;
+        float best_dist = std::numeric_limits<float>::infinity();
+
+        searchRecursive(_root, query, k, heap, best_dist);
+
+        std::vector<Candidate> results;
+        while (!heap.empty()){
+            results.push_back(heap.top());
+            heap.pop();
+        }
+        std::reverse(results.begin(), results.end());
+
+        for (const auto &c : results) {
+            std::cout << "Вектор " << c.index << ": ";
+            
+            const auto* vec = _db[c.index];
+            int current_index = 0;
+            
+            for (size_t i = 0; i < vec->nnz_coords_indices.size(); ++i) {
+                int coord_index = vec->nnz_coords_indices[i];
+                int value = vec->nnz_coords[i];
+                
+                while (current_index < coord_index) {
+                    std::cout << "0 ";
+                    ++current_index;
+                }
+
+                std::cout << value << " ";
+                ++current_index;
+            }
+            
+            while (current_index < vec->dimension) {
+                std::cout << "0 ";
+                ++current_index;
+            }
+
+            std::cout << "\n";
+        }
     }
 
     ~KDTree(){
         clearTree(_root);
+
+        for (auto vec : _db){
+            delete vec;
+        }
+        _db.clear();
     }
 };
 
@@ -228,6 +330,7 @@ void readDatabase(std::vector<SparseVector*> &db){
                 num.clear();
                 index++;
             }
+            else if (line[i] == ' '){ continue; }
             else if ((line[i] == '0') and (num.empty())){
                 index++;
             }
@@ -239,7 +342,7 @@ void readDatabase(std::vector<SparseVector*> &db){
             num.clear();
             index++;
         }
-        sparse_vector->dimension = index + 1;
+        sparse_vector->dimension = index;
         db.push_back(sparse_vector);
         index = 0;
     }
@@ -273,6 +376,7 @@ int main(){
             num.clear();
             index++;
         }
+        else if (query_string[i] == ' '){ continue; }
         else if ((query_string[i] == '0') and (num.empty())){
             index++;
         }
@@ -291,5 +395,7 @@ int main(){
     std::cout << "Введите k для top-k vector retrieval: ";
     std::cin >> k;
 
-    tree.topKRetrieval(query, k);
+    tree.topKRetrieval(*query, k);
+
+    delete query;
 }
