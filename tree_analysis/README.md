@@ -15,8 +15,8 @@
 - **analysis_build_time** - Построение графика для анализа зависимости времени построения k-d tree от максимального количества векторов в листе
 
 ## Результаты анализа k-d tree
-![alt text](for_img/capture_20260710215013242.bmp)
-![alt text](for_img/capture_20260710215036458.bmp)
+![alt text](for_img/image-5.png)
+![alt text](for_img/image-6.png)
 ![alt text](for_img/image.png)
 ![alt text](for_img/image-1.png)
 ![alt text](for_img/image-2.png)
