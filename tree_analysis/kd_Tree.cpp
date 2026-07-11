@@ -134,8 +134,12 @@ private:
                          nth_index,
                          _data_indices.begin() + right_bound_indices+1,
                          [&](int I, int J){
-                             return _db[I]->getAxisValue(axis) 
-                                  < _db[J]->getAxisValue(axis);
+                            int valI = _db[I]->getAxisValue(axis);
+                            int valJ = _db[J]->getAxisValue(axis);
+                            if (valI != valJ) {
+                                return valI < valJ;
+                            }
+                            return I < J;
                          });
 
         return _db[_data_indices[median]]->getAxisValue(axis);
@@ -389,7 +393,7 @@ int main(){
         index++;
     }
     query_string.clear();
-    query->dimension = index + 1;
+    query->dimension = index;
 
     int k;
     std::cout << "Введите k для top-k vector retrieval: ";
