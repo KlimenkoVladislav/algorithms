@@ -19,7 +19,7 @@ void jumpingPermutations(int *arr, int n, int k){
         index++;
     
         prev -= b;
-        if (prev < a){
+        if (index != prev){
             temp = arr[prev];
             arr[prev] = arr[index];
             arr[index] = temp;
