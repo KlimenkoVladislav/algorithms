@@ -1,17 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void jumpingPermutations(int *arr, int n, int k){
+void jumpingPermutations(int *arr, int n){
     int index = 1;
     int a = n >> 1;
     int b = a >> 1;
     int bound = b >> 1;
-    n--;
+    int half_bound = bound >> 1;
     int prev = 0;
+    int anomaly = 0;
     int temp;
     int mirror_index;
     int mirror_prev;
-    for (int i = 0; i < bound; i++){
+    n--;
+    for (int i = 0; i < half_bound; i++){
         prev += a;
         temp = arr[prev];
         arr[prev] = arr[index];
@@ -19,17 +21,14 @@ void jumpingPermutations(int *arr, int n, int k){
         index++;
     
         prev -= b;
-        if (index < b){
-            temp = arr[prev];
-            arr[prev] = arr[index];
-            arr[index] = temp;
-
-            mirror_prev = n - prev;
-            mirror_index = n - index;
-            temp = arr[mirror_prev];
-            arr[mirror_prev] = arr[mirror_index];
-            arr[mirror_index] = temp;
-        }
+        temp = arr[prev];
+        arr[prev] = arr[index];
+        arr[index] = temp;
+        mirror_prev = n - prev;
+        mirror_index = n - index;
+        temp = arr[mirror_prev];
+        arr[mirror_prev] = arr[mirror_index];
+        arr[mirror_index] = temp;
         index++;
     
         prev += a;
@@ -38,7 +37,28 @@ void jumpingPermutations(int *arr, int n, int k){
         arr[index] = temp;
         index += 2;
 
-        prev = arr[index - 1];
+        anomaly += 4;
+        prev = anomaly;
+    }
+    anomaly = 2;
+    prev = anomaly;
+    for (int i = half_bound; i < bound; i++){
+        prev += a;
+        temp = arr[prev];
+        arr[prev] = arr[index];
+        arr[index] = temp;
+        index += 2;
+    
+        prev -= b;
+    
+        prev += a;
+        temp = arr[prev];
+        arr[prev] = arr[index];
+        arr[index] = temp;
+        index += 2;
+
+        anomaly += 4;
+        prev = anomaly;
     }
 }
 
@@ -56,7 +76,7 @@ int main(){
         arr[i] = i;
     }
 
-    jumpingPermutations(arr, n, k);
+    jumpingPermutations(arr, n);
 
     for (int i = 0; i < n; i++){
         printf("%d ", arr[i]);
